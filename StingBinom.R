@@ -39,7 +39,7 @@ require(lme4)#package for modelling linear "mixed-effects" models
 set.seed(20230426)# date this script was started
 
 # Starting parameters -----------------------------------------------------
-n_indiv = 40 # total individuals
+n_indiv = 80 # total individuals
 n_trials = 4 # trials per individual
 n_treat = 2 # number of treatments (different individuals)
 
