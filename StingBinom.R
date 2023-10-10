@@ -19,8 +19,8 @@
 #       USAGE:  
 #TODO   ---------------------------------------------
 #TODO   
-#- Set up simulation
-#- Test analysis
+#- Set up simulation  +
+#- Test analysis      +
 #- Individual slopes
 #- Plotting
 #- Nonlinear version?
@@ -119,10 +119,11 @@ dt_sim = within(dt_sim,
                  #scaled by the effect of successive trials
                  #plus a small additional source or error
                  
-                 response_y = pop_intercept + ind_intercepts[indiv] +
-                    (treat-1) * pop_treat_slope +
-                    (trial) * pop_trial_slope + ind_trial_bias[indiv] +
-                    (trial) * pop_treat_trial_slope +
+       response_y = pop_intercept + ind_intercepts[indiv] +
+                    (trial) * (pop_trial_slope + 
+                                 (treat-1) * pop_treat_trial_slope) + 
+                     ind_trial_bias[indiv] +
+                    (treat-1) *  +pop_treat_slope
                     rnorm(n = n_indiv * n_trials,
                           mean = 0,
                           sd = residual_sd)
