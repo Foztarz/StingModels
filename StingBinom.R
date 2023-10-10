@@ -54,10 +54,10 @@ dt_sim = data.frame(indiv = sort(rep(x = 1:n_indiv,
                     )
 
 # Simulate curve -----------------------------------------------------------
-zero_crossing = 2#  probability for treatment 1 would reach 0.5 on the 5th trial
+zero_crossing = 1.5#  probability for treatment 1 would reach 0.5 between the 1st and 2nd trial
 pop_trial_slope = -1.20 #change in log odds with every trial (70% reduction ≈ 1-exp(-1.20))
 pop_treat_slope = 1.10 #change in log odds with treatment 2 (tripled odds ≈ exp(1.10))
-pop_treat_trial_slope = 0.30 #change in trial effect with treatment 2 (quite large)
+pop_treat_trial_slope = 0.45 #change in trial effect with treatment 2 (quite large)
 pop_intercept = -zero_crossing*pop_trial_slope # set intercept to match zero crossing (inflection point of sigmoid)
 ind_intercept_sd = 0.5 #standard deviation of individual intercepts (log odds)
 ind_trial_sd = 0.3 #standard deviation of individual trial slopes
@@ -251,17 +251,17 @@ glmm.null = glmer(formula = sting~
 extractAIC(glmm.max)[2]#2nd component is the AIC, 1st is the d.f.
 extractAIC(glmm.null)[2]
 #If AIC is lower for the maximal model, then the maximal model fits
-# 329.1871 < 444.2998
+# 323.4593 < 439.8845
 #We can also perform a likelihood ratio test, confusingly called "anova"
 anova(glmm.max, glmm.null, test = 'Chisq')
 #This gives the same answer as the AIC, but the difference can be reported with
 #a test statistic and p-value
 ##           npar    AIC    BIC  logLik deviance  Chisq Df Pr(>Chisq)
-## glmm.null     2 444.30 451.84 -220.15   440.30                                        
-## glmm.max     14 329.19 381.94 -150.59   301.19 139.11 12  < 2.2e-16 ***
+## glmm.null     2 439.88 447.42 -217.94   435.88                                        
+## glmm.max     14 323.46 376.22 -147.73   295.46 140.43 12  < 2.2e-16 ***
 
 #report:
-#change in deviance = 139.11   
+#change in deviance = 140.43   
 #change in degrees of freedom = 12
 #p < 0.0001
 #(often p < 2.2e-16; the smallest number the computer can think of)
@@ -285,21 +285,21 @@ anova(glmm.max,
 # no_int: sting ~ treat + trial + (1 + treat + trial | indiv)
 # glmm.max: sting ~ treat * trial + (1 + treat * trial | indiv)
 #           npar    AIC    BIC  logLik deviance  Chisq Df Pr(>Chisq)   
-# no_int       9 320.70 354.62 -151.35   302.70          
-# glmm.max    14 329.19 381.94 -150.59   301.19 1.5158  5     0.9112
+# no_int       9 314.97 348.88 -148.49   296.97           
+# glmm.max    14 323.46 376.22 -147.73   295.46 1.5103  5     0.9119
 #lower AIC following the parameter's removal indicates 
 #that the model without an interaction is a better fit.
 #However, the difference is not significant, so there is
 #no significant evidence for or against an interaction.
 
 #We simulated quite a substantial effect 
-#(change in log odds of 0.30, an exp(0.30) ≈ 1.35 x increase in relative sting prob per trial),
+#(change in log odds of 0.45, an exp(0.45) ≈ 1.57 x increase in relative sting prob per trial),
 #but it appears hard to detect in this size of dataset.
 
 
 #We can also use this method to report the strength of our fixed effects
 #we would report this as:
-#likelihood ratio test, change in deviance  = 1.5158, d.f. = 5, p = 0.9112
+#likelihood ratio test, change in deviance  = 1.5103, d.f. = 5, p = 0.9119
 
 #effect of treatment
 no_treatment = update(object = no_int, 
@@ -310,14 +310,14 @@ no_treatment = update(object = no_int,
 anova(no_int,
       no_treatment)
 ##              npar   AIC   BIC   logLik deviance  Chisq Df Pr(>Chisq)    
-## no_treatment    5 351.82 370.66 -170.91   341.82                          
-## no_int          9 320.70 354.62 -151.35   302.70 39.114  4  6.598e-08 ***
+## no_treatment    5 359.78 378.62 -174.89   349.78                           
+## no_int          9 314.97 348.88 -148.49   296.97 52.811  4  9.332e-11 ***
 
 #larger AIC following the parameter's removal indicates 
 #that the model without an effect of treatment is a significantly poorer fit
 #therefore, there is a significant effect of treatment
 #we would report this as:
-#likelihood ratio test, change in deviance  = 39.114, d.f. = 4, p < 0.001
+#likelihood ratio test, change in deviance  = 52.811, d.f. = 4, p < 0.001
 
 #effect of trial
 no_trial = update(object = no_treatment, 
@@ -328,14 +328,14 @@ no_trial = update(object = no_treatment,
 anova(no_treatment,
       no_trial)
 ##              npar   AIC   BIC   logLik deviance  Chisq Df Pr(>Chisq)    
-## no_trial        2 444.30 451.84 -220.15   440.30                       
-## no_treatment    5 351.82 370.66 -170.91   341.82 98.483  3  < 2.2e-16 ***
+## no_trial        2 439.01 446.55 -217.50   435.01                       
+## no_treatment    5 359.78 378.62 -174.89   349.78 85.229  3  < 2.2e-16 ***
 
 #larger AIC following the parameter's removal indicates 
 #that the model without an effect of trial is a significantly poorer fit
 #therefore, there is a significant effect of trial
 #we would report this as:
-#likelihood ratio test, change in deviance  = 98.483, d.f. = 3, p < 0.001
+#likelihood ratio test, change in deviance  = 85.229, d.f. = 3, p < 0.001
 
 
 # Discarded ---------------------------------------------------------------
