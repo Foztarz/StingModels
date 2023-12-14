@@ -1,6 +1,6 @@
 # Details ---------------------------------------------------------------
 #       AUTHOR:	James Foster              DATE: 2023 04 26
-#     MODIFIED:	James Foster              DATE: 2023 09 24
+#     MODIFIED:	James Foster              DATE: 2023 12 14
 #
 #  DESCRIPTION: Toy example of a binomial experiment spread over 4 trials
 #               with consistent individual biases
@@ -10,19 +10,27 @@
 #               
 #      OUTPUTS: Saves model summary
 #
-#	   CHANGES: - 
+#	   CHANGES: - post-hoc tests
+#	            - plot predictions
 #
 #   REFERENCES: Bates D., Maechler M., Bolker B. & Walker S. (2015). 
 #               Fitting Linear Mixed-Effects Models Using lme4.
 #               Journal of Statistical Software, 67(1), 1-48. doi:10.18637/jss.v067.i01.
-# 
+#               
+#               Lenth R. V. (2021). emmeans: Estimated Marginal Means, 
+#               AKA Least-Squares Means. R package version 1.5.4. 
+#               https://cran.r-project.org/web/packages/emmeans/vignettes/basics.html
+#
+#               Šidák, Z. K. (1967). "Rectangular Confidence Regions for the 
+#               Means of Multivariate Normal Distributions". J. Am. Statist. Assoc. 
+#               62 (318): 626–633. doi:10.1080/01621459.1967.10482935.
 #       USAGE:  
 #TODO   ---------------------------------------------
 #TODO   
 #- Set up simulation  +
 #- Test analysis      +
-#- Individual slopes
-#- Plotting
+#- Individual slopes  +
+#- Plotting +
 #- Nonlinear version?
 
 
@@ -338,40 +346,183 @@ anova(no_treatment,
 #likelihood ratio test, change in deviance  = 85.229, d.f. = 3, p < 0.001
 
 
-# Discarded ---------------------------------------------------------------
-# #Loop through experiment design and generate theoretical response
-# for (ii in 1:length(response_y))
-# {
-#    #each data point is generated from the animal's intercept
-#    #plus the effect of treatment
-#    #plus the effect of successive trials
-#    #plus the animal's response (slope) to changing treatment
-#    #scaled by the effect of successive trials
-#    #plus a small additional source or error
-#    response_y[ii] = ind_intercepts[animal[ii]] +
-#       (stype[ii] - 1) * type_mean +
-#       (slope_animal[animal[ii]] +
-#           (stype[ii] - 1) * type_slope * type_animal[animal[ii]]) * stimulus[ii] +
-#       rnorm(n = 1,
-#             mean = 0,
-#             sd = residual_sd)
-# }
-# #convert to binomial
-# correct_incorrect = rbinom(n = length(response_y),
-#                            size = 1,
-#                            prob = plogis(q = response_y - mean(response_y)) )
-# 
-# 
-# # Combine this into a single data.frame format object,
-# # with the experimental design and the measured response data
-# sim_data = data.frame(
-#    correct_incorrect = correct_incorrect,
-#    animal = LETTERS[animal],
-#    #animal names will now be capital letters
-#    stimulus = stimulus,
-#    type = factor(stype,
-#                  labels = c('alpha',
-#                             'beta'))
-# )
+# Post-hoc comparisons ----------------------------------------------------
+#Load the package for post-hoc comparisons
+require(emmeans)
+require(pbkrtest)# Used for calculating DF in mixed-effects model
+
+# Calculate overall discrete effects
+emm_intercepts = emmeans(glmm.max,#we'll use the maximal model, as model selection was not clearly against it
+                         specs = list(pairwise~treat),
+                         #compare the overall effects of different types
+                         adjust = 'sidak')
+summary(emm_intercepts)
+## $`pairwise differences of treat`
+## 1               estimate    SE  df z.ratio p.value
+## treat1 - treat2    -3.16 0.661 Inf  -4.782  <.0001
+#As for the likelihood ratio test, we see that there is a large effect of 
+#treatment on probability of a response (as there should be).
+#The estimated difference is that for treat1 the odds of a correct response are 
+#16 log units lower than for beta for the same stimulus intensity.
+#That is an odds ratio of exp(3.16) = 24 to 1 (treat2 vs treat1)
+
+# Calculate post-hoc comparisons for continuous effects (slope)
+emm_slopes_interact = emtrends(glmm.max,
+                               specs = list(pairwise~treat),
+                               var = 'trial',
+                               #compare the effects of different types on response/stimulus slopes
+                               adjust = 'sidak')
+summary(emm_slopes_interact)
+## `pairwise differences of treat`
+## 1               estimate    SE  df z.ratio p.value
+## treat1 - treat2   -0.366 0.555 Inf  -0.658  0.5103
+#as for the model comparison, the model finds not significant difference in the trial-response relationship 
+#between the two treatments. This is unlike what was specified in our input variables (treat_slope) 
+#for the simulation. The estimated difference is that treat1 has an average 
+#trial-response slope that is weaker by "-0.366". That is for every trial 
+#the odds of a response decrease 1.44x faster
+#for treatment 1 than treatment 2.
+
+
+# Plot predictions --------------------------------------------------------
+
+# . Extract predictions ---------------------------------------------------
+#check all relevant variables for predictions
+formula(glmm.max)
+## sting ~ treat * trial + (1 + treat * trial | indiv)
+newdta = with(dt_sim,
+              expand.grid(trial = seq(from = min(trial),
+                                         to = max(trial),
+                                         length.out = length(trial)),
+                          treat = unique(treat),
+                          indiv = unique(indiv)
+              ) 
+)
+#predictions (mean estimate)
+prd = predict(glmm.max,
+              newdata = newdta,
+              type = 'response'
+)
+#bootstrap the confidence intervals (can take a while...)
+pfun = function(x)
+{
+  predict(x,
+          newdata = newdta, 
+          type = "response")
+}
+# library(snow)#parallel processing requires "snow" on Windows
+#Really benefits from some parallel processing
+avail.cores = parallel::detectCores() - 1
+clt = parallel::makeCluster(spec = avail.cores, 
+                            type=if(Sys.info()[['sysname']] == 'Windows'){"SOCK" # 'sock' type on windows
+                            }else{"FORK"}#'fork' type on mac & linux
+)
+parallel::clusterExport(clt,
+                        list('glmm.max',
+                             'dt_sim',
+                             'newdta'
+                        )
+)
+#this takes a long time to simulate
+message('starting large simulation\n',
+        'expect to wait at least 10 minutes...\n'
+)
+system.time({
+  bt = bootMer(glmm.max,
+               FUN = pfun,
+               nsim = 100,#100 takes ≈15 minutes. Minimum of 20 to be able to calculate 95%CI. Increase number for greater detail.
+               re.form = NULL,#NA for fixed effects, NULL to include random effects
+               #fixed effects gives "confidence interval", population level effects
+               #random effects gives "prediction interval", expected values for these individuals
+               #on the logit scale, we may be able to improve precision by including individuals in our prediction
+               parallel = ifelse(test = Sys.info()[['sysname']] == 'Windows',
+                                 yes =  "snow",
+                                 no =  "multicore"),
+               ncpus = parallel::detectCores()-1, #leave one processor available for user
+               cl = clt #the parallel cluster prepared above
+  )
+})
+message('simulation finished!')
+#now it has been used, close the cluster
+parallel::stopCluster(clt)
+#To get CI for only fixed effects, align and aggregate bootstrap estimates
+pred_q = aggregate(pred ~ treat * trial, #aggregate predictions by fixed effect
+                   FUN = quantile, #calculate as quantiles of bootstrap predictions
+                   data = with(bt, 
+                               data.frame(newdta, 
+                                          pred = c(t(t)) #convert from rows to columns and align 
+                               ) 
+                   ),
+                   probs = c(0,1) + c(1,-1)*0.05/2) #using alpha = 0.05, make two-tailed confidence intervals
+# find mean prediction across 
+mod_mean = aggregate(prd ~ treat * trial, 
+                     data = cbind(newdta, prd), 
+                     FUN = function(x){plogis(mean(qlogis(x)))})
+#merge together
+param_data = merge(merge(newdta, pred_q, all = TRUE), 
+                   mod_mean)
+#rename for plotting
+mod_pred = within(param_data,
+                  {
+                    mod_mean = prd
+                    CI_02.5 = pred[,'2.5%']
+                    CI_97.5 = pred[,'97.5%']
+                    rm(list = c('pred','prd'))
+                  }
+)
+
+# . Plot predictions ------------------------------------------------------
+
+#plot all data together
+with(dt_agg,
+     {
+       plot(x = trial,
+            y = sting,
+            bg = adjustcolor(col = c('red4', 'orange2')[ 1 + treat %in% '2'],
+                             alpha.f = 0.5), # 50% opacity
+            col = 'black',
+            pch = 21,
+            ylim = c(0,1)) # dots
+     }
+)
+#add model and shaded confidence intervals
+#treatment 1
+with(subset(mod_pred, treat %in% '1'),
+     {
+       polygon(x = c(sort(trial), sort(trial,decreasing = TRUE)),
+               y = 
+                 c(lowerCI = CI_02.5[order(trial)],
+                   upperCI = CI_97.5[order(trial,decreasing = TRUE)]
+                 ),
+               col = adjustcolor(col = 'red',
+                                 alpha.f = 0.2),
+               border = NA
+       )
+       lines(sort(trial),
+             mod_mean[order(trial)],#
+             col = 'red',
+             pch = 10
+       )
+     }
+)
+#stimulus type beta
+with(subset(mod_pred, treat %in% '2'),
+     {
+       polygon(x = c(sort(trial), sort(trial,decreasing = TRUE)),
+               y = 
+                 c(lowerCI = CI_02.5[order(trial)],
+                   upperCI = CI_97.5[order(trial,decreasing = TRUE)]
+                 ),
+               col = adjustcolor(col = 'orange2',
+                                 alpha.f = 0.2),
+               border = NA
+       )
+       lines(sort(trial),
+             mod_mean[order(trial)],
+             col = 'orange2',
+             pch = 10
+       )
+     }
+)
 
 
